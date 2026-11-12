@@ -1,9 +1,9 @@
 # MidKnight
 
 A playable web version of **MidKnight**, a 5×6 chess variant with only kings,
-knights, rooks and pawns. It comes from the Stat 234 paper *ELOquent: Analysis
+knights, rooks and pawns. It comes from my Stat 234 paper *ELOquent: Analysis
 of Self-Play Reinforcement Learning and Concept Detection for Novel Chess
-Variants* (Harvard, spring 2024).
+Variants*.
 
 ```
 6  r n k n r
