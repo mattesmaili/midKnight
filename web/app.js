@@ -23,6 +23,8 @@ let flipped = loadPref("flipped") === "1";
 let soundOn = loadPref("sound") !== "0";
 let busy = false;
 let drag = null;      // pointer interaction in progress
+let botThinking = false;
+let lastRequest = null; // body of the last POST /api/games (for Rematch)
 
 // ---- small helpers ---------------------------------------------------------
 
@@ -78,6 +80,27 @@ function legalByFrom() {
 }
 const movesFrom = (from) => (legalByFrom()[from] || []);
 const choicesFor = (from, to) => movesFrom(from).filter((m) => m.to === to);
+
+// ---- players ------------------------------------------------------------------
+
+const isBotGame = () => !!state && (state.players.w.type === "bot" || state.players.b.type === "bot");
+const humanColor = () => (isBotGame() ? (state.players.w.type === "human" ? "w" : "b") : null);
+const botPlayer = () => (isBotGame() ? state.players[humanColor() === "w" ? "b" : "w"] : null);
+
+// "Classical engine · Level 4 (Club)"
+function botTitle(p) {
+  const meta = options && options.bots.find((b) => b.name === p.name);
+  if (!meta) return p.label;
+  const parts = meta.options.map((o) => {
+    const v = p.settings[o.key];
+    if (o.type === "int") return `${o.label} ${v}` + (o.labels[String(v)] ? ` (${o.labels[String(v)]})` : "");
+    const c = o.choices.find((x) => String(x.value) === String(v));
+    return `${o.label}: ${c ? c.label : v}`;
+  });
+  return [meta.label, ...parts].join(" · ");
+}
+
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- sound ------------------------------------------------------------------
 
@@ -149,7 +172,7 @@ function render() {
   drawBoard(state.board, legal, targets);
   renderStatus();
   renderMoves();
-  $("#btn-undo").disabled = busy || state.moves.length === 0;
+  $("#btn-undo").disabled = busy || !state.can_undo;
 }
 
 function drawBoard(board, legal, targets) {
@@ -192,9 +215,13 @@ function coord(kind, text) {
 }
 
 function outcomeText(outcome) {
-  if (outcome.result === "1/2-1/2") return { title: "Draw!", detail: REASONS[outcome.reason] || "" };
-  const side = outcome.result === "1-0" ? "White" : "Black";
-  return { title: `${side} wins!`, detail: REASONS[outcome.reason] || "" };
+  const detail = REASONS[outcome.reason] || "";
+  if (outcome.result === "1/2-1/2") return { title: "Draw!", detail };
+  const winner = outcome.result === "1-0" ? "w" : "b";
+  if (isBotGame()) {
+    return winner === humanColor() ? { title: "You win!", detail } : { title: `${botPlayer().label} wins!`, detail };
+  }
+  return { title: `${winner === "w" ? "White" : "Black"} wins!`, detail };
 }
 
 function renderStatus() {
@@ -209,16 +236,30 @@ function renderStatus() {
     const r = state.outcome.result;
     sw.className = "swatch " + (r === "1-0" ? "w" : r === "0-1" ? "b" : "");
     if (r === "1/2-1/2") sw.style.background = "linear-gradient(90deg, #fff 50%, #111 50%)";
+  } else if (isBotGame()) {
+    text = state.bot_to_move ? `${botPlayer().label} is thinking` : "Your move" + (state.check ? " — check!" : "");
+    sw.className = "swatch " + state.turn;
   } else {
     const side = state.turn === "w" ? "White" : "Black";
     text = `${side} to move` + (state.check ? " — check!" : "");
     sw.className = "swatch " + state.turn;
   }
   el.append(sw, document.createTextNode(text));
+  if (!state.outcome && state.bot_to_move) {
+    const dots = document.createElement("span");
+    dots.className = "thinking";
+    dots.innerHTML = "<i></i><i></i><i></i>";
+    el.append(dots);
+  }
+  const matchup = $("#matchup");
+  matchup.hidden = !isBotGame();
+  if (isBotGame()) {
+    matchup.textContent = `You (${humanColor() === "w" ? "White" : "Black"}) vs ${botTitle(botPlayer())}`;
+  }
 
   const r = state.rules;
   const promo = r.promotions.split("").map((c) => PIECE_NAMES[c]).join(", ");
-  $("#rules").textContent =
+  $("#rules").textContent = `Seed ${state.seed} · ` +
     `Promotion: ${promo} · Pawns: ${r.double_push ? "two-square first move, en passant" : "one square only"}` +
     (state.outcome ? "" : ` · No-progress count ${state.clock}/21`);
 }
@@ -306,6 +347,32 @@ async function play(uci, how) {
     render();
   }
   if (!before.outcome && state.outcome) setTimeout(showGameOver, 450);
+  else if (state.bot_to_move) botMove();
+}
+
+// Ask the server for the computer's move, then slide it onto the board.
+async function botMove() {
+  if (!state || !state.bot_to_move || botThinking) return;
+  botThinking = true;
+  busy = true;
+  render();
+  const id = state.id;
+  const before = state;
+  try {
+    const [next] = await Promise.all([api(`/games/${id}/bot`, {}), delay(350)]);
+    if (!state || state.id !== id) return; // a new game was started meanwhile
+    await slide(next.last_move.from, next.last_move.to);
+    state = next;
+    Sound.play(soundFor(state));
+    showError("");
+  } catch (e) {
+    if (e.status !== 409) showError(e.message);
+  } finally {
+    botThinking = false;
+    busy = false;
+    render();
+  }
+  if (state && state.id === id && !before.outcome && state.outcome) setTimeout(showGameOver, 450);
 }
 
 function tryMove(from, to, how) {
@@ -446,7 +513,7 @@ function onSquareKey(name) {
 // ---- buttons ------------------------------------------------------------------
 
 async function undo() {
-  if (!state || busy || !state.moves.length) return;
+  if (!state || busy || !state.can_undo) return;
   hidePromotion();
   closeGameOver();
   busy = true;
@@ -523,15 +590,98 @@ function confetti(n) {
 
 // ---- new game dialog -------------------------------------------------------------
 
+function savedRequest() {
+  try { return JSON.parse(loadPref("newgame")) || {}; } catch { return {}; }
+}
+
 function buildDialog() {
   const r = options.rules;
-  let current = state ? state.rules : null;
-  if (!current) {
-    try { current = JSON.parse(loadPref("rules")); } catch { /* ignore */ }
+  const saved = savedRequest();
+  const rules = (state && state.rules) || saved.rules || r.default;
+  fillChoices($("#opt-promotions"), "promotions", r.promotions, rules.promotions);
+  fillChoices($("#opt-double"), "double_push", r.double_push, rules.double_push);
+  const form = $("#new-form");
+  form.elements.mode.value = saved.mode || "bot";
+  form.elements.color.value = saved.color || "w";
+  form.elements.seed.value = "";
+  const bots = options.bots.map((b) => ({ value: b.name, label: b.label, description: b.description }));
+  const botName = saved.bot && options.bots.some((b) => b.name === saved.bot.name) ? saved.bot.name
+    : (options.bots.find((b) => b.name === "classical") || options.bots[0]).name;
+  fillChoices($("#opt-bot"), "bot", bots, botName);
+  fillBotSettings(botName, saved.bot && saved.bot.name === botName ? saved.bot.settings : {});
+  syncDialog();
+}
+
+// Settings declared by the chosen bot: an int range becomes a slider, a fixed list a menu.
+function fillBotSettings(name, values) {
+  const box = $("#opt-bot-settings");
+  box.replaceChildren();
+  const meta = options.bots.find((b) => b.name === name);
+  for (const o of meta ? meta.options : []) {
+    const wrap = document.createElement("div");
+    const label = document.createElement("label");
+    label.textContent = o.label;
+    label.htmlFor = "set-" + o.key;
+    wrap.append(label);
+    const value = values && values[o.key] !== undefined ? values[o.key] : o.default;
+    if (o.type === "int") {
+      const row = document.createElement("div");
+      row.className = "range-row";
+      const input = document.createElement("input");
+      Object.assign(input, { type: "range", id: "set-" + o.key, min: o.low, max: o.high, step: 1, value });
+      input.dataset.key = o.key;
+      const out = document.createElement("output");
+      const show = () => { out.textContent = input.value + (o.labels[input.value] ? ` · ${o.labels[input.value]}` : ""); };
+      input.addEventListener("input", show);
+      show();
+      row.append(input, out);
+      wrap.append(row);
+    } else {
+      const select = document.createElement("select");
+      select.id = "set-" + o.key;
+      select.dataset.key = o.key;
+      for (const c of o.choices) {
+        const opt = document.createElement("option");
+        opt.value = String(c.value);
+        opt.textContent = c.label;
+        opt.selected = String(c.value) === String(value);
+        select.append(opt);
+      }
+      wrap.append(select);
+    }
+    if (o.description) {
+      const small = document.createElement("small");
+      small.textContent = o.description;
+      wrap.append(small);
+    }
+    box.append(wrap);
   }
-  current ||= r.default;
-  fillChoices($("#opt-promotions"), "promotions", r.promotions, current.promotions);
-  fillChoices($("#opt-double"), "double_push", r.double_push, current.double_push);
+}
+
+function syncDialog() {
+  $("#bot-section").hidden = $("#new-form").elements.mode.value !== "bot";
+}
+
+function readDialog() {
+  const form = $("#new-form");
+  const request = {
+    rules: {
+      promotions: form.elements.promotions.value,
+      double_push: form.elements.double_push.value === "true",
+    },
+    mode: form.elements.mode.value,
+  };
+  if (request.mode === "bot") {
+    const settings = {};
+    $("#opt-bot-settings").querySelectorAll("[data-key]").forEach((el) => {
+      settings[el.dataset.key] = el.type === "range" ? Number(el.value) : el.value;
+    });
+    request.bot = { name: form.elements.bot.value, settings };
+    request.color = form.elements.color.value;
+  }
+  const seed = form.elements.seed.value.trim();
+  if (seed) request.seed = Number(seed);
+  return request;
 }
 
 function fillChoices(fieldset, name, choices, value) {
@@ -555,16 +705,23 @@ function fillChoices(fieldset, name, choices, value) {
   }
 }
 
-async function newGame(rules, quiet = false) {
+async function newGame(request, quiet = false) {
   hidePromotion();
   closeGameOver();
   selected = null;
-  state = await api("/games", { rules });
+  state = await api("/games", request);
+  lastRequest = { ...request };
+  delete lastRequest.seed; // a rematch gets a fresh seed
   savePref("game", state.id);
-  savePref("rules", JSON.stringify(rules));
+  savePref("newgame", JSON.stringify(lastRequest));
+  if (isBotGame()) {
+    flipped = humanColor() === "b"; // your pieces at the bottom
+    savePref("flipped", flipped ? "1" : "0");
+  }
   showError("");
   render();
   if (!quiet) Sound.play("start");
+  if (state.bot_to_move) botMove();
 }
 
 function openNewDialog() {
@@ -575,12 +732,11 @@ function openNewDialog() {
 
 $("#new-dialog").addEventListener("close", async () => {
   if ($("#new-dialog").returnValue !== "start") return;
-  const form = $("#new-form");
-  const rules = {
-    promotions: form.elements.promotions.value,
-    double_push: form.elements.double_push.value === "true",
-  };
-  try { await newGame(rules); } catch (e) { showError(e.message); }
+  try { await newGame(readDialog()); } catch (e) { showError(e.message); }
+});
+$("#new-form").addEventListener("change", (e) => {
+  if (e.target.name === "mode") syncDialog();
+  if (e.target.name === "bot") fillBotSettings(e.target.value, {});
 });
 
 // ---- wiring -------------------------------------------------------------------
@@ -603,7 +759,7 @@ $("#over-close").addEventListener("click", closeGameOver);
 $("#over-new").addEventListener("click", openNewDialog);
 $("#over-rematch").addEventListener("click", () => {
   Sound.unlock();
-  newGame(state.rules).catch((e) => showError(e.message));
+  newGame(lastRequest || savedRequest()).catch((e) => showError(e.message));
 });
 $("#over-dialog").addEventListener("click", (e) => {
   if (e.target === e.currentTarget) closeGameOver(); // click on the backdrop
@@ -636,7 +792,9 @@ async function start() {
         const s = await api(`/games/${saved}`);
         if (!s.outcome) {     // resume a game in progress
           state = s;
+          lastRequest = savedRequest();
           render();
+          if (state.bot_to_move) botMove();
           return;
         }
       } catch { /* server restarted: nothing to resume */ }

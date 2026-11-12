@@ -295,6 +295,42 @@ legend { font-weight: 650; margin-bottom: 6px; padding: 0; }
 .choice:has(input:checked) { border-color: var(--accent); }
 .choice input { margin-top: 4px; accent-color: var(--crimson); }
 .choice small { display: block; color: var(--muted); }
+dialog { max-height: calc(100vh - 32px); overflow-y: auto; }
+.bot-settings { margin: -4px 0 14px; }
+.bot-settings label { display: block; font-weight: 650; margin-bottom: 4px; }
+.bot-settings .range-row { display: flex; align-items: center; gap: 12px; }
+.bot-settings input[type="range"] { flex: 1; accent-color: var(--crimson); }
+.bot-settings output { min-width: 7.5em; text-align: right; font-weight: 700; color: var(--accent); }
+.bot-settings small, .seed-box small { display: block; color: var(--muted); margin-top: 2px; }
+.bot-settings select { font: inherit; padding: 6px 8px; border-radius: 7px; }
+.segmented { display: flex; flex-wrap: wrap; }
+.segmented legend { width: 100%; }
+.segmented label { flex: 1; cursor: pointer; }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented span {
+  display: block; text-align: center; padding: 7px 0; border: 1px solid var(--line);
+  font-family: "Fredoka", "Nunito", sans-serif;
+}
+.segmented label:first-of-type span { border-radius: 8px 0 0 8px; }
+.segmented label:last-of-type span { border-radius: 0 8px 8px 0; }
+.segmented label + label span { border-left: 0; }
+.segmented input:checked + span { background: var(--crimson); border-color: var(--crimson); color: #fff; }
+.segmented input:focus-visible + span { outline: 3px solid #3b82f6; outline-offset: 1px; }
+.seed-box { margin: 0 0 14px; }
+.seed-box summary { cursor: pointer; font-weight: 650; font-family: "Fredoka", "Nunito", sans-serif; }
+.seed-box input {
+  font: inherit; margin-top: 6px; padding: 6px 10px; width: 10em; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+}
+.matchup { margin: 4px 0 0; color: var(--muted); font-size: 0.92rem; }
+.status .thinking { display: inline-flex; gap: 3px; margin-left: 2px; }
+.status .thinking i {
+  width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  animation: blink 1s infinite ease-in-out;
+}
+.status .thinking i:nth-child(2) { animation-delay: 0.15s; }
+.status .thinking i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* ---- game over ---------------------------------------------------------- */

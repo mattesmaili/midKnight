@@ -25,12 +25,13 @@
     <aside class="panel">
       <div id="intro" class="intro" hidden>
         <h2>Ready to play?</h2>
-        <p>Two players take turns at one board. Pick the rules, then make the first move.</p>
+        <p>Take on the computer at the level you like, or play a friend on this screen.</p>
         <button id="btn-start" type="button" class="primary big">Start a game</button>
       </div>
 
       <div id="game-ui" hidden>
       <div id="status" class="status" aria-live="polite"></div>
+      <p id="matchup" class="matchup" hidden></p>
 
       <div class="buttons">
         <button id="btn-new" type="button" class="primary">New game</button>
@@ -58,13 +59,30 @@
   <dialog id="new-dialog">
     <form method="dialog" id="new-form">
       <h2>New game</h2>
-      <fieldset>
+      <fieldset id="opt-mode">
         <legend>Players</legend>
-        <label class="choice"><input type="radio" name="mode" value="1v1" checked>
+        <label class="choice"><input type="radio" name="mode" value="bot" checked>
+          <span><strong>Play the computer</strong><small>Pick an opponent and a difficulty.</small></span></label>
+        <label class="choice"><input type="radio" name="mode" value="1v1">
           <span><strong>1v1 on this screen</strong><small>Two players take turns at one board.</small></span></label>
       </fieldset>
+      <div id="bot-section">
+        <fieldset id="opt-bot"><legend>Opponent</legend></fieldset>
+        <div id="opt-bot-settings" class="bot-settings"></div>
+        <fieldset class="segmented">
+          <legend>You play</legend>
+          <label><input type="radio" name="color" value="w" checked><span>White</span></label>
+          <label><input type="radio" name="color" value="random"><span>Random</span></label>
+          <label><input type="radio" name="color" value="b"><span>Black</span></label>
+        </fieldset>
+      </div>
       <fieldset id="opt-promotions"><legend>A pawn promotes to</legend></fieldset>
       <fieldset id="opt-double"><legend>A pawn's first move</legend></fieldset>
+      <details class="seed-box">
+        <summary>Seed</summary>
+        <input id="opt-seed" name="seed" inputmode="numeric" pattern="[0-9]*" placeholder="random" autocomplete="off">
+        <small>The same seed and the same moves replay a game exactly, including the computer's choices.</small>
+      </details>
       <div class="dialog-buttons">
         <button value="cancel" type="submit" formnovalidate>Cancel</button>
         <button value="start" type="submit" class="primary">Start</button>

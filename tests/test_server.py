@@ -107,3 +107,82 @@ def test_checkmate_is_reported(base_url):
     assert s["outcome"] == {"result": game.outcome().result, "reason": "checkmate"}
     assert s["legal"] == [] and s["check"] is not None
     assert s["moves"][-1].endswith("#")
+
+
+# ---- games against a bot ------------------------------------------------------------
+
+def new_bot_game(base_url, color="w", seed=42, bot="random", settings=None):
+    status, s = call(base_url, "/api/games", {"mode": "bot", "color": color, "seed": seed,
+                                               "bot": {"name": bot, "settings": settings or {}}})
+    assert status == 201, s
+    return s
+
+
+def test_options_list_bots(base_url):
+    _, data = call(base_url, "/api/options")
+    names = [b["name"] for b in data["bots"]]
+    assert "random" in names and "classical" in names
+    classical = next(b for b in data["bots"] if b["name"] == "classical")
+    assert classical["options"][0]["key"] == "level"
+
+
+def test_play_against_a_bot(base_url):
+    s = new_bot_game(base_url, "w")
+    assert s["players"]["b"]["type"] == "bot" and s["players"]["w"]["type"] == "human"
+    assert not s["bot_to_move"] and s["legal"] and not s["can_undo"]
+    gid = s["id"]
+    _, s = call(base_url, f"/api/games/{gid}/move", {"move": "c2c3"})
+    assert s["bot_to_move"] and s["legal"] == []
+    assert call(base_url, f"/api/games/{gid}/move", {"move": "d2d3"})[0] == 409
+    status, s = call(base_url, f"/api/games/{gid}/bot", {})
+    assert status == 200 and len(s["moves"]) == 2 and not s["bot_to_move"] and s["legal"]
+    assert call(base_url, f"/api/games/{gid}/bot", {})[0] == 409
+    # Undo takes back the bot's reply and your move.
+    status, s = call(base_url, f"/api/games/{gid}/undo", {})
+    assert status == 200 and s["moves"] == [] and not s["can_undo"]
+
+
+def test_bot_moves_first_when_you_are_black(base_url):
+    s = new_bot_game(base_url, "b", bot="classical", settings={"level": 1})
+    assert s["players"]["w"]["type"] == "bot" and s["bot_to_move"] and not s["can_undo"]
+    _, s = call(base_url, f"/api/games/{s['id']}/bot", {})
+    assert len(s["moves"]) == 1 and s["turn"] == "b" and s["legal"]
+    assert "depth" in s["bot_info"]
+    assert call(base_url, f"/api/games/{s['id']}/undo", {})[0] == 400
+
+
+def test_seed_replays_the_bots_moves(base_url):
+    def play(seed):
+        s = new_bot_game(base_url, "random", seed=seed, bot="classical", settings={"level": 2})
+        gid = s["id"]
+        for _ in range(6):
+            if s["outcome"]:
+                break
+            if s["bot_to_move"]:
+                _, s = call(base_url, f"/api/games/{gid}/bot", {})
+            else:
+                _, s = call(base_url, f"/api/games/{gid}/move", {"move": sorted(s["legal"])[0]})
+        return s["players"], s["moves"]
+
+    assert play(1234) == play(1234)
+
+
+def test_undo_then_replay_gives_the_same_bot_move(base_url):
+    s = new_bot_game(base_url, "w", seed=9, bot="random")
+    gid = s["id"]
+    call(base_url, f"/api/games/{gid}/move", {"move": "b2b3"})
+    _, first = call(base_url, f"/api/games/{gid}/bot", {})
+    call(base_url, f"/api/games/{gid}/undo", {})
+    call(base_url, f"/api/games/{gid}/move", {"move": "b2b3"})
+    _, again = call(base_url, f"/api/games/{gid}/bot", {})
+    assert first["moves"] == again["moves"]
+
+
+def test_bad_bot_requests(base_url):
+    assert call(base_url, "/api/games", {"mode": "bot", "bot": {"name": "nope"}})[0] == 400
+    assert call(base_url, "/api/games", {"mode": "bot", "bot": {"name": "classical", "settings": {"level": 0}}})[0] == 400
+    assert call(base_url, "/api/games", {"mode": "bot", "color": "x", "bot": {"name": "random"}})[0] == 400
+    assert call(base_url, "/api/games", {"mode": "chess960"})[0] == 400
+    assert call(base_url, "/api/games", {"seed": "abc"})[0] == 400
+    _, s = call(base_url, "/api/games", {})
+    assert call(base_url, f"/api/games/{s['id']}/bot", {})[0] == 409  # no bot in a 1v1 game
