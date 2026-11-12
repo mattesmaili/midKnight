@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MidKnight</title>
+  <link rel="icon" href="pieces/wN.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Mid<span>Knight</span></h1>
+    <p class="tagline">A 5&times;6 chess variant based on <em>ELOquent</em>, my Stat 234 final project on
+      teaching an AI new chess variants through self-play.<br>
+      <a href="https://github.com/mattesmaili/midKnight" target="_blank" rel="noopener">Read the paper on GitHub</a>.</p>
+  </header>
+
+  <main class="layout">
+    <section class="board-wrap" aria-label="Board">
+      <div id="board" class="board" role="grid"></div>
+      <div id="promo" class="promo" hidden></div>
+    </section>
+
+    <div class="side">
+    <aside class="panel">
+      <div id="intro" class="intro" hidden>
+        <h2>Ready to play?</h2>
+        <p>Two players take turns at one board. Pick the rules, then make the first move.</p>
+        <button id="btn-start" type="button" class="primary big">Start a game</button>
+      </div>
+
+      <div id="game-ui" hidden>
+      <div id="status" class="status" aria-live="polite"></div>
+
+      <div class="buttons">
+        <button id="btn-new" type="button" class="primary">New game</button>
+        <button id="btn-undo" type="button" title="Take back the last move (Ctrl+Z)">Undo</button>
+        <button id="btn-flip" type="button" title="Flip the board (F)">Flip</button>
+        <button id="btn-sound" type="button" class="icon" title="Sound on (M to toggle)" aria-label="Sound" aria-pressed="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none"/>
+            <g class="waves"><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/></g>
+            <g class="mute"><path d="M16.5 9.5l5 5"/><path d="M21.5 9.5l-5 5"/></g>
+          </svg>
+        </button>
+      </div>
+
+      <h2>Moves</h2>
+      <ol id="moves" class="moves"></ol>
+      </div>
+      <p id="error" class="error" hidden></p>
+    </aside>
+    <p id="rules" class="rules" hidden></p>
+    </div>
+  </main>
+
+  <dialog id="new-dialog">
+    <form method="dialog" id="new-form">
+      <h2>New game</h2>
+      <fieldset>
+        <legend>Players</legend>
+        <label class="choice"><input type="radio" name="mode" value="1v1" checked>
+          <span><strong>1v1 on this screen</strong><small>Two players take turns at one board.</small></span></label>
+      </fieldset>
+      <fieldset id="opt-promotions"><legend>A pawn promotes to</legend></fieldset>
+      <fieldset id="opt-double"><legend>A pawn's first move</legend></fieldset>
+      <div class="dialog-buttons">
+        <button value="cancel" type="submit" formnovalidate>Cancel</button>
+        <button value="start" type="submit" class="primary">Start</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="over-dialog" class="over">
+    <div class="confetti" aria-hidden="true"></div>
+    <div class="over-card">
+      <img id="over-piece" class="over-piece" alt="">
+      <h2 id="over-title">White wins!</h2>
+      <p id="over-detail">by checkmate</p>
+      <div class="over-buttons">
+        <button id="over-rematch" type="button" class="primary">Rematch</button>
+        <button id="over-new" type="button">New game&hellip;</button>
+        <button id="over-close" type="button">View board</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
